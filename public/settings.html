@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الإعدادات | نظام الكاشير</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app" class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🛒</div>
+      <div><div class="logo-text">نظام الكاشير</div><div class="logo-sub">الإعدادات</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="/pos"      class="nav-item"><span class="nav-icon">💰</span> الكاشير</a>
+      <a href="/products" class="nav-item"><span class="nav-icon">📦</span> المنتجات</a>
+      <a href="/low-stock" class="nav-item"><span class="nav-icon">🚨</span> قرب النفاد</a>
+      <a href="/invoices" class="nav-item"><span class="nav-icon">🧾</span> الفواتير</a>
+      <a href="/settings" class="nav-item active"><span class="nav-icon">⚙️</span> الإعدادات</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div style="min-width:0;flex:1;">
+          <div style="color:#e2e8f0;font-size:13px;font-weight:600;" id="sidebar-username">...</div>
+          <div style="font-size:11px;cursor:pointer;" @click="doLogout">تسجيل خروج</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-title">⚙️ الإعدادات</div>
+    </div>
+    <div class="page-body" style="max-width:700px;">
+
+      <!-- General Settings -->
+      <div class="card mb-4">
+        <div class="card-header"><h5>🏪 إعدادات المحل</h5></div>
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group" style="grid-column:1/-1;">
+              <label class="form-label">اسم المحل</label>
+              <input type="text" class="form-control" v-model="settings.shop_name" placeholder="مثال: سوبر ماركت النور">
+            </div>
+            <div class="form-group">
+              <label class="form-label">العملة</label>
+              <input type="text" class="form-control" v-model="settings.currency" placeholder="ج.م">
+            </div>
+            <div class="form-group">
+              <label class="form-label">موضع العملة</label>
+              <select class="form-control" v-model="settings.currency_position">
+                <option value="after">بعد الرقم (100 ج.م)</option>
+                <option value="before">قبل الرقم (ج.م 100)</option>
+              </select>
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label class="form-label">نص أسفل الفاتورة</label>
+              <input type="text" class="form-control" v-model="settings.receipt_footer" placeholder="شكراً لزيارتكم">
+            </div>
+          </div>
+
+          <div style="border-top:1px solid #f1f5f9;padding-top:14px;margin-top:4px;">
+            <div class="form-label" style="margin-bottom:10px;">إعدادات المخزون</div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px;">
+                <input type="checkbox" v-model="showStock" style="width:16px;height:16px;">
+                إظهار المخزون في الكاشير
+              </label>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <label class="form-label" style="margin:0;white-space:nowrap;">تنبيه المخزون عند:</label>
+                <input type="number" class="form-control" v-model.number="settings.low_stock_alert" style="width:80px;direction:ltr;" min="0">
+              </div>
+            </div>
+          </div>
+
+          <div style="border-top:1px solid #f1f5f9;padding-top:14px;margin-top:14px;">
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px;">
+                <input type="checkbox" v-model="taxEnabled" style="width:16px;height:16px;">
+                تفعيل ضريبة القيمة المضافة
+              </label>
+              <div v-if="taxEnabled" style="display:flex;align-items:center;gap:8px;">
+                <label class="form-label" style="margin:0;">نسبة الضريبة %:</label>
+                <input type="number" class="form-control" v-model.number="settings.tax_rate" style="width:80px;direction:ltr;" min="0" max="100">
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:16px;">
+            <button class="btn btn-primary" @click="saveSettings" :disabled="savingSettings">
+              <span v-if="!savingSettings">💾 حفظ الإعدادات</span>
+              <span v-else class="spinner" style="width:14px;height:14px;border-width:2px;"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Change Password -->
+      <div class="card mb-4">
+        <div class="card-header"><h5>🔐 تغيير كلمة المرور</h5></div>
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">الحالية</label>
+              <input type="password" class="form-control" v-model="pwd.old" placeholder="••••">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">الجديدة</label>
+              <input type="password" class="form-control" v-model="pwd.new1" placeholder="••••">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">تأكيد الجديدة</label>
+              <input type="password" class="form-control" v-model="pwd.new2" placeholder="••••">
+            </div>
+          </div>
+          <div style="margin-top:12px;">
+            <button class="btn btn-warning" @click="changePassword" :disabled="savingPwd">
+              <span v-if="!savingPwd">🔑 تغيير كلمة المرور</span>
+              <span v-else class="spinner" style="width:14px;height:14px;border-width:2px;"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users Management -->
+      <div class="card">
+        <div class="card-header">
+          <h5>👥 إدارة المستخدمين</h5>
+          <button class="btn btn-primary btn-sm" @click="openAddUser">+ مستخدم جديد</button>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>اسم المستخدم</th>
+                <th>الاسم الكامل</th>
+                <th>الدور</th>
+                <th>تاريخ الإنشاء</th>
+                <th>حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="u in users" :key="u.id">
+                <td class="fw-bold">{{ u.username }}</td>
+                <td>{{ u.full_name || '-' }}</td>
+                <td>
+                  <span :class="u.role === 'admin' ? 'badge badge-warning' : 'badge badge-info'">
+                    {{ u.role === 'admin' ? '👑 مدير' : '💁 كاشير' }}
+                  </span>
+                </td>
+                <td class="text-muted" style="font-size:12px;">{{ new Date(u.created_at).toLocaleDateString('ar-EG') }}</td>
+                <td>
+                  <button class="btn btn-sm btn-danger" @click="deleteUser(u)">🗑</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add User Modal -->
+  <div class="modal-overlay" v-if="showUserModal" @click.self="showUserModal=false">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h5>👤 إضافة مستخدم</h5>
+        <button class="btn-close" @click="showUserModal=false">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">اسم المستخدم *</label>
+          <input type="text" class="form-control" v-model="newUser.username" placeholder="username" style="direction:ltr;">
+        </div>
+        <div class="form-group">
+          <label class="form-label">الاسم الكامل</label>
+          <input type="text" class="form-control" v-model="newUser.full_name" placeholder="محمد أحمد">
+        </div>
+        <div class="form-group">
+          <label class="form-label">كلمة المرور *</label>
+          <input type="password" class="form-control" v-model="newUser.password" placeholder="••••">
+        </div>
+        <div class="form-group">
+          <label class="form-label">الدور</label>
+          <select class="form-control" v-model="newUser.role">
+            <option value="cashier">كاشير</option>
+            <option value="admin">مدير</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" @click="showUserModal=false">إلغاء</button>
+        <button class="btn btn-primary" @click="addUser" :disabled="savingUser">
+          <span v-if="!savingUser">إضافة</span>
+          <span v-else class="spinner" style="width:14px;height:14px;border-width:2px;"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const settings = ref({
+      shop_name: '', currency: 'ج.م', currency_position: 'after',
+      receipt_footer: 'شكراً لزيارتكم', tax_enabled: '0', tax_rate: '14',
+      show_stock: '1', low_stock_alert: '5'
+    });
+    const showStock   = computed({ get: () => settings.value.show_stock === '1', set: v => settings.value.show_stock = v ? '1' : '0' });
+    const taxEnabled  = computed({ get: () => settings.value.tax_enabled === '1', set: v => settings.value.tax_enabled = v ? '1' : '0' });
+    const savingSettings = ref(false);
+
+    const pwd = ref({ old: '', new1: '', new2: '' });
+    const savingPwd = ref(false);
+
+    const users = ref([]);
+    const showUserModal = ref(false);
+    const newUser = ref({ username: '', password: '', full_name: '', role: 'cashier' });
+    const savingUser = ref(false);
+
+    async function loadSettings() {
+      const r = await fetch('/api/settings');
+      const d = await r.json();
+      if (d.success) settings.value = { ...settings.value, ...d.data };
+    }
+
+    async function saveSettings() {
+      savingSettings.value = true;
+      const r = await fetch('/api/settings', {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(settings.value)
+      });
+      const d = await r.json();
+      savingSettings.value = false;
+      showToast(d.message || (d.success ? 'تم الحفظ' : 'حدث خطأ'), d.success ? 'success' : 'error');
+    }
+
+    async function changePassword() {
+      if (!pwd.value.old || !pwd.value.new1) { showToast('يرجى ملء جميع الحقول', 'warning'); return; }
+      if (pwd.value.new1 !== pwd.value.new2) { showToast('كلمتا المرور غير متطابقتين', 'error'); return; }
+      savingPwd.value = true;
+      const r = await fetch('/api/auth/change-password', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ old_password: pwd.value.old, new_password: pwd.value.new1 })
+      });
+      const d = await r.json();
+      savingPwd.value = false;
+      if (d.success) { showToast(d.message, 'success'); pwd.value = { old:'', new1:'', new2:'' }; }
+      else showToast(d.message, 'error');
+    }
+
+    async function loadUsers() {
+      const r = await fetch('/api/settings/users');
+      const d = await r.json();
+      if (d.success) users.value = d.data;
+    }
+
+    function openAddUser() {
+      newUser.value = { username:'', password:'', full_name:'', role:'cashier' };
+      showUserModal.value = true;
+    }
+
+    async function addUser() {
+      savingUser.value = true;
+      const r = await fetch('/api/settings/users', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(newUser.value)
+      });
+      const d = await r.json();
+      savingUser.value = false;
+      if (d.success) { showToast(d.message, 'success'); showUserModal.value = false; await loadUsers(); }
+      else showToast(d.message, 'error');
+    }
+
+    async function deleteUser(u) {
+      if (!confirm(`حذف المستخدم "${u.username}"؟`)) return;
+      const r = await fetch(`/api/settings/users/${u.id}`, { method: 'DELETE' });
+      const d = await r.json();
+      if (d.success) { showToast(d.message, 'success'); await loadUsers(); }
+      else showToast(d.message, 'error');
+    }
+
+    function doLogout() { if (confirm('تسجيل الخروج؟')) logout(); }
+
+    onMounted(() => { loadSettings(); loadUsers(); });
+
+    return {
+      settings, showStock, taxEnabled, savingSettings,
+      pwd, savingPwd,
+      users, showUserModal, newUser, savingUser,
+      saveSettings, changePassword,
+      openAddUser, addUser, deleteUser, doLogout,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الكاشير | نظام البيع</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    body { overflow: hidden; }
+    .pos-topbar {
+      height: 50px;
+      background: #1e293b;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .pos-topbar .shop-name { color: #fff; font-weight: 700; font-size: 15px; flex: 1; }
+    .pos-topbar a {
+      color: #94a3b8;
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      transition: all .2s;
+    }
+    .pos-topbar a:hover { background: rgba(255,255,255,.1); color: #fff; }
+    .pos-topbar .logout-btn {
+      color: #f87171;
+      cursor: pointer;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      transition: all .2s;
+      background: none;
+      border: none;
+      font-family: 'Cairo', sans-serif;
+    }
+    .pos-topbar .logout-btn:hover { background: rgba(248,113,113,.15); }
+    .category-strip { display: flex; gap: 8px; flex-wrap: wrap; }
+    .product-card .p-category { margin-bottom: 6px; }
+    #receipt { display: none; }
+    .big-total {
+      font-size: 40px;
+      font-weight: 800;
+      text-align: center;
+      color: var(--primary);
+      padding: 10px 0;
+      direction: ltr;
+    }
+    .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+    .num-btn {
+      padding: 14px;
+      border-radius: 10px;
+      border: 1.5px solid #e2e8f0;
+      background: #f8fafc;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .15s;
+      font-family: 'Cairo', sans-serif;
+    }
+    .num-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .num-btn.del-btn { background: #fee2e2; color: var(--danger); border-color: #fecaca; }
+    .num-btn.clear-btn { background: #fef3c7; color: var(--warning); border-color: #fde68a; }
+    .payment-shortcuts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .shortcut-btn {
+      flex: 1;
+      min-width: 80px;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1.5px solid #e2e8f0;
+      background: #f8fafc;
+      font-family: 'Cairo', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      transition: all .15s;
+    }
+    .shortcut-btn:hover { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
+    .discount-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .change-display {
+      background: #f0fdf4;
+      border: 2px solid #86efac;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .change-display .change-label { font-weight: 600; color: #15803d; }
+    .change-display .change-val { font-size: 22px; font-weight: 800; color: #15803d; direction: ltr; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="pos-topbar">
+    <span class="shop-name">{{ settings.shop_name || 'نظام الكاشير' }}</span>
+    <a href="/products">الأصناف</a>
+    <a href="/low-stock">قرب النفاد</a>
+    <a href="/invoices">الفواتير</a>
+    <a href="/settings" v-if="currentUser?.role === 'admin'">الإعدادات</a>
+    <button class="logout-btn" @click="doLogout">خروج</button>
+  </div>
+
+  <div class="pos-layout">
+    <div class="pos-products">
+      <div class="pos-search-bar">
+        <input
+          id="mainSearch"
+          ref="searchInput"
+          type="text"
+          class="search-input"
+          v-model="searchQuery"
+          placeholder="ابحث باسم الصنف أو امسح الباركود"
+          autocomplete="off"
+          @keyup.enter="handleSearchEnter"
+        />
+        <button class="btn btn-outline btn-sm" @click="clearSearch" v-if="searchQuery">مسح</button>
+        <button class="btn btn-outline btn-sm" @click="reloadProducts">تحديث</button>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span style="font-size:12.5px;color:#64748b;">{{ filteredProducts.length }} صنف</span>
+        <span v-if="todayStats.invoices_count" style="font-size:12px;color:#94a3b8;">
+          اليوم: {{ todayStats.invoices_count }} فاتورة - {{ formatMoney(todayStats.total_sales) }}
+        </span>
+        <span style="flex:1"></span>
+        <span style="font-size:12px;color:#64748b;">مرتبة حسب الأكثر مبيعًا</span>
+      </div>
+
+      <div class="category-strip">
+        <button class="btn btn-sm" :class="activeCategory === '' ? 'btn-primary' : 'btn-outline'" @click="activeCategory = ''">الكل</button>
+        <button
+          v-for="category in categories"
+          :key="category"
+          class="btn btn-sm"
+          :class="activeCategory === category ? 'btn-primary' : 'btn-outline'"
+          @click="activeCategory = category"
+        >
+          {{ category }}
+        </button>
+      </div>
+
+      <div class="products-grid" v-if="filteredProducts.length">
+        <div
+          v-for="(p, index) in filteredProducts"
+          :key="p.id"
+          class="product-card"
+          :class="{ 'out-of-stock': settings.show_stock === '1' && p.stock <= 0 }"
+          @click="addToInvoice(p)"
+        >
+          <div class="p-name">{{ p.name }}</div>
+          <div class="p-category">
+            <span class="badge badge-info">{{ p.category || 'عام' }}</span>
+            <span class="badge badge-warning" v-if="index < 3 && !searchQuery && !activeCategory">الأكثر مبيعًا</span>
+          </div>
+          <div class="p-price">{{ formatMoney(p.price) }}</div>
+          <div class="p-stock" v-if="settings.show_stock === '1'">
+            <span v-if="p.stock <= 0" style="color:#dc2626;">نفد</span>
+            <span v-else-if="p.stock <= 5" style="color:#d97706;">{{ p.stock }} {{ p.unit }}</span>
+            <span v-else style="color:#16a34a;">{{ p.stock }} {{ p.unit }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty-state" v-else-if="productsLoaded">
+        <div class="empty-icon">🔎</div>
+        <p v-if="searchQuery">لا توجد نتائج لـ "{{ searchQuery }}"</p>
+        <p v-else>لا توجد أصناف في هذا التصنيف</p>
+      </div>
+
+      <div class="empty-state" v-else>
+        <div class="spinner" style="width:32px;height:32px;margin:0 auto 12px;border-color:#e2e8f0;border-top-color:var(--primary);"></div>
+        <p>جارٍ تحميل الأصناف...</p>
+      </div>
+    </div>
+
+    <div class="pos-invoice">
+      <div class="invoice-header">
+        <div>
+          <h5>الفاتورة</h5>
+          <div style="font-size:11.5px;color:#94a3b8;margin-top:2px;">{{ cartItems.length }} صنف</div>
+        </div>
+        <button class="btn btn-sm btn-danger" @click="clearCart" v-if="cartItems.length">مسح</button>
+      </div>
+
+      <div class="invoice-items">
+        <div v-if="!cartItems.length" class="empty-state" style="padding:40px 20px;">
+          <div class="empty-icon">🛒</div>
+          <p>اختر صنفًا من القائمة</p>
+        </div>
+
+        <div v-for="(item, idx) in cartItems" :key="item.product_id + '-' + idx" class="invoice-item">
+          <div style="flex:1;min-width:0;">
+            <div class="item-name">{{ item.product_name }}</div>
+            <div class="item-price">{{ formatMoney(item.unit_price) }} × {{ item.quantity }}</div>
+          </div>
+          <div class="qty-ctrl">
+            <div class="qty-btn" @click="decreaseQty(idx)">-</div>
+            <div class="qty-display">{{ item.quantity }}</div>
+            <div class="qty-btn" @click="increaseQty(idx)">+</div>
+          </div>
+          <div class="item-subtotal">{{ formatMoney(item.unit_price * item.quantity) }}</div>
+          <div class="item-del" @click="removeItem(idx)">×</div>
+        </div>
+      </div>
+
+      <div class="invoice-totals">
+        <div class="total-row">
+          <span>المجموع</span>
+          <span>{{ formatMoney(subtotal) }}</span>
+        </div>
+        <div class="total-row" v-if="discount > 0">
+          <span style="color:var(--danger);">خصم</span>
+          <span style="color:var(--danger);">- {{ formatMoney(discount) }}</span>
+        </div>
+        <div class="total-row grand">
+          <span>الإجمالي</span>
+          <span>{{ formatMoney(netTotal) }}</span>
+        </div>
+      </div>
+
+      <div class="invoice-actions">
+        <button class="btn btn-success btn-block btn-lg" @click="openPayment" :disabled="!cartItems.length">إتمام البيع</button>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <button class="btn btn-outline btn-sm" style="flex:1;" @click="addDiscount">خصم</button>
+          <button class="btn btn-outline btn-sm" style="flex:1;" @click="focusSearch">بحث</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" v-if="showPayment" @click.self="showPayment = false">
+    <div class="modal-box" style="max-width:420px;">
+      <div class="modal-header">
+        <h5>تفاصيل الدفع</h5>
+        <button class="btn-close" @click="showPayment = false">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="text-align:center;margin-bottom:12px;">
+          <div style="font-size:13px;color:#64748b;margin-bottom:4px;">المبلغ المطلوب</div>
+          <div class="big-total">{{ formatMoney(netTotal) }}</div>
+        </div>
+
+        <div class="discount-row">
+          <label style="font-size:13px;font-weight:600;flex-shrink:0;">خصم:</label>
+          <input type="number" class="form-control" v-model.number="discount" min="0" style="width:100px;direction:ltr;">
+          <span style="font-size:13px;color:#64748b;">{{ settings.currency || 'ج.م' }}</span>
+        </div>
+
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px;">المبلغ المدفوع:</div>
+        <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:10px;padding:12px;font-size:28px;font-weight:800;text-align:center;direction:ltr;min-height:56px;letter-spacing:2px;margin-bottom:10px;">
+          {{ paidDisplay || '0' }}
+        </div>
+
+        <div class="payment-shortcuts">
+          <button class="shortcut-btn" @click="setPaid(netTotal)">المبلغ كاملًا</button>
+          <button class="shortcut-btn" v-for="value in quickAmounts" :key="value" @click="setPaid(value)">
+            {{ formatMoney(value) }}
+          </button>
+        </div>
+
+        <div class="numpad">
+          <button class="num-btn" v-for="n in ['7','8','9','4','5','6','1','2','3']" :key="n" @click="numpadPress(n)">{{ n }}</button>
+          <button class="num-btn clear-btn" @click="numpadPress('C')">C</button>
+          <button class="num-btn" @click="numpadPress('0')">0</button>
+          <button class="num-btn del-btn" @click="numpadPress('⌫')">⌫</button>
+        </div>
+
+        <div class="change-display" v-if="paidAmount >= netTotal">
+          <span class="change-label">الباقي للعميل</span>
+          <span class="change-val">{{ formatMoney(change) }}</span>
+        </div>
+        <div v-else-if="paidAmount > 0 && paidAmount < netTotal" style="background:#fff7ed;border:2px solid #fed7aa;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;margin-top:10px;">
+          <span style="font-weight:600;color:#c2410c;">ناقص</span>
+          <span style="font-size:18px;font-weight:800;color:#c2410c;direction:ltr;">{{ formatMoney(netTotal - paidAmount) }}</span>
+        </div>
+
+        <div style="margin-top:12px;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:6px;">طريقة الدفع:</div>
+          <div style="display:flex;gap:8px;">
+            <button
+              v-for="method in [{v:'cash',l:'نقدي'},{v:'card',l:'بطاقة'},{v:'other',l:'أخرى'}]"
+              :key="method.v"
+              class="btn btn-sm"
+              :class="paymentMethod === method.v ? 'btn-primary' : 'btn-outline'"
+              @click="paymentMethod = method.v"
+            >
+              {{ method.l }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" @click="showPayment = false">إلغاء</button>
+        <button class="btn btn-success" :disabled="paidAmount < netTotal || saving" @click="completeSale">
+          <span v-if="!saving">إتمام البيع</span>
+          <span v-else class="spinner" style="width:16px;height:16px;border-width:2px;"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="receipt" v-if="lastInvoice">
+    <div class="receipt-header">
+      <h2>{{ settings.shop_name || 'المحل' }}</h2>
+      <p>فاتورة رقم: {{ lastInvoice.invoice_number }}</p>
+      <p>{{ new Date().toLocaleString('ar-EG') }}</p>
+    </div>
+    <hr class="receipt-divider">
+    <div class="receipt-items">
+      <table>
+        <tr v-for="item in cartItemsSnapshot" :key="item.product_id + '-' + item.product_name">
+          <td style="flex:1">{{ item.product_name }}</td>
+          <td style="text-align:center;padding:0 8px;">{{ item.quantity }}</td>
+          <td style="text-align:left;direction:ltr;">{{ formatMoney(item.unit_price * item.quantity) }}</td>
+        </tr>
+      </table>
+    </div>
+    <hr class="receipt-divider">
+    <div class="receipt-total">الإجمالي: {{ formatMoney(lastInvoice.net_total) }}</div>
+    <div v-if="lastInvoice.change_amount > 0" class="receipt-total" style="font-size:12px;">
+      المدفوع: {{ formatMoney(lastPaidAmount) }} | الباقي: {{ formatMoney(lastInvoice.change_amount) }}
+    </div>
+    <hr class="receipt-divider">
+    <div class="receipt-footer">{{ settings.receipt_footer || 'شكراً لزيارتكم' }}</div>
+  </div>
+
+  <div id="toast-container"></div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+createApp({
+  setup() {
+    const settings = ref({});
+    const currentUser = ref(null);
+    const allProducts = ref([]);
+    const productsLoaded = ref(false);
+    const categories = ref([]);
+    const activeCategory = ref('');
+    const searchQuery = ref('');
+    const cartItems = ref([]);
+    const discount = ref(0);
+    const searchInput = ref(null);
+    const todayStats = ref({});
+
+    const showPayment = ref(false);
+    const paidDisplay = ref('');
+    const paymentMethod = ref('cash');
+    const saving = ref(false);
+    const lastInvoice = ref(null);
+    const lastPaidAmount = ref(0);
+    const cartItemsSnapshot = ref([]);
+
+    const subtotal = computed(() =>
+      cartItems.value.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
+    );
+    const netTotal = computed(() => Math.max(0, subtotal.value - (discount.value || 0)));
+    const paidAmount = computed(() => {
+      const value = parseFloat(paidDisplay.value);
+      return Number.isNaN(value) ? 0 : value;
+    });
+    const change = computed(() => Math.max(0, paidAmount.value - netTotal.value));
+    const quickAmounts = computed(() => {
+      const total = netTotal.value;
+      return [50, 100, 200, 500].filter((value) => value >= total).slice(0, 3);
+    });
+
+    const filteredProducts = computed(() => {
+      const query = searchQuery.value.trim().toLowerCase();
+      return allProducts.value.filter((product) => {
+        const sameCategory = !activeCategory.value || product.category === activeCategory.value;
+        const sameQuery = !query
+          || product.name.toLowerCase().includes(query)
+          || (product.barcode && product.barcode.includes(query));
+        return sameCategory && sameQuery;
+      });
+    });
+
+    function formatMoney(amount) {
+      const currency = settings.value.currency || 'ج.م';
+      const position = settings.value.currency_position || 'after';
+      const value = parseFloat(amount || 0).toFixed(2);
+      return position === 'before' ? `${currency} ${value}` : `${value} ${currency}`;
+    }
+
+    function refreshCategories() {
+      const unique = [...new Set(allProducts.value.map((product) => product.category || 'عام'))].sort();
+      categories.value = unique;
+      if (activeCategory.value && !unique.includes(activeCategory.value)) {
+        activeCategory.value = '';
+      }
+    }
+
+    async function loadSettings() {
+      const response = await fetch('/api/settings');
+      const data = await response.json();
+      if (data.success) settings.value = data.data;
+    }
+
+    async function loadCurrentUser() {
+      const response = await fetch('/api/auth/me');
+      const data = await response.json();
+      if (data.success) currentUser.value = data.user;
+    }
+
+    async function loadProducts() {
+      productsLoaded.value = false;
+      const response = await fetch('/api/products');
+      const data = await response.json();
+      if (data.success) {
+        allProducts.value = data.data;
+        refreshCategories();
+        productsLoaded.value = true;
+        try { localStorage.setItem('pos_products', JSON.stringify(data.data)); } catch {}
+      } else {
+        try {
+          const cached = localStorage.getItem('pos_products');
+          if (cached) {
+            allProducts.value = JSON.parse(cached);
+            refreshCategories();
+            productsLoaded.value = true;
+          }
+        } catch {}
+      }
+    }
+
+    async function loadTodayStats() {
+      const response = await fetch('/api/invoices/stats/today');
+      const data = await response.json();
+      if (data.success) todayStats.value = data.data;
+    }
+
+    function reloadProducts() {
+      loadProducts();
+      loadTodayStats();
+    }
+
+    function addToInvoice(product) {
+      if (settings.value.show_stock === '1' && product.stock <= 0) {
+        showToast('هذا الصنف غير متوفر في المخزون', 'warning');
+        return;
+      }
+
+      const existing = cartItems.value.find((item) => item.product_id === product.id);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        cartItems.value.push({
+          product_id: product.id,
+          product_name: product.name,
+          barcode: product.barcode,
+          category: product.category,
+          unit: product.unit,
+          unit_price: parseFloat(product.price),
+          quantity: 1
+        });
+      }
+
+      searchQuery.value = '';
+      focusSearch();
+    }
+
+    function removeItem(index) {
+      cartItems.value.splice(index, 1);
+    }
+
+    function increaseQty(index) {
+      cartItems.value[index].quantity += 1;
+    }
+
+    function decreaseQty(index) {
+      if (cartItems.value[index].quantity > 1) cartItems.value[index].quantity -= 1;
+      else removeItem(index);
+    }
+
+    function clearCart() {
+      if (!cartItems.value.length) return;
+      if (confirm('مسح الفاتورة الحالية؟')) {
+        cartItems.value = [];
+        discount.value = 0;
+      }
+    }
+
+    function focusSearch() {
+      nextTick(() => searchInput.value?.focus());
+    }
+
+    function handleSearchEnter() {
+      if (filteredProducts.value.length === 1) addToInvoice(filteredProducts.value[0]);
+    }
+
+    function clearSearch() {
+      searchQuery.value = '';
+      focusSearch();
+    }
+
+    function addDiscount() {
+      const value = prompt('أدخل قيمة الخصم', discount.value || 0);
+      if (value !== null && !isNaN(parseFloat(value))) {
+        discount.value = Math.max(0, parseFloat(value));
+      }
+    }
+
+    function openPayment() {
+      if (!cartItems.value.length) return;
+      paidDisplay.value = '';
+      paymentMethod.value = 'cash';
+      showPayment.value = true;
+    }
+
+    function numpadPress(key) {
+      if (key === 'C') {
+        paidDisplay.value = '';
+        return;
+      }
+      if (key === '⌫') {
+        paidDisplay.value = paidDisplay.value.slice(0, -1);
+        return;
+      }
+      if (key === '.' && paidDisplay.value.includes('.')) return;
+      if (paidDisplay.value.length >= 10) return;
+      paidDisplay.value += key;
+    }
+
+    function setPaid(amount) {
+      paidDisplay.value = parseFloat(amount).toFixed(2).replace(/\.00$/, '');
+    }
+
+    async function completeSale() {
+      if (saving.value) return;
+      saving.value = true;
+
+      try {
+        const payload = {
+          items: cartItems.value,
+          discount: discount.value || 0,
+          paid_amount: paidAmount.value,
+          payment_method: paymentMethod.value
+        };
+
+        const response = await fetch('/api/invoices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+
+        if (!data.success) {
+          showToast(data.message || 'حدث خطأ', 'error');
+          return;
+        }
+
+        lastInvoice.value = data.invoice;
+        lastPaidAmount.value = paidAmount.value;
+        cartItemsSnapshot.value = cartItems.value.map((item) => ({ ...item }));
+        showPayment.value = false;
+
+        showToast(`تم البيع بنجاح. الباقي: ${formatMoney(data.invoice.change_amount)}`, 'success');
+
+        await nextTick();
+        setTimeout(() => window.print(), 200);
+
+        cartItems.value = [];
+        discount.value = 0;
+        paidDisplay.value = '';
+        await loadTodayStats();
+        await loadProducts();
+        focusSearch();
+      } catch (error) {
+        console.error(error);
+        showToast('خطأ في الاتصال', 'error');
+      } finally {
+        saving.value = false;
+      }
+    }
+
+    function doLogout() {
+      if (confirm('تسجيل الخروج؟')) logout();
+    }
+
+    onMounted(async () => {
+      await loadCurrentUser();
+      await loadSettings();
+      await loadProducts();
+      await loadTodayStats();
+      focusSearch();
+    });
+
+    return {
+      settings,
+      currentUser,
+      allProducts,
+      productsLoaded,
+      categories,
+      activeCategory,
+      searchQuery,
+      cartItems,
+      discount,
+      searchInput,
+      todayStats,
+      showPayment,
+      paidDisplay,
+      paymentMethod,
+      saving,
+      lastInvoice,
+      lastPaidAmount,
+      cartItemsSnapshot,
+      subtotal,
+      netTotal,
+      paidAmount,
+      change,
+      quickAmounts,
+      filteredProducts,
+      formatMoney,
+      reloadProducts,
+      addToInvoice,
+      removeItem,
+      increaseQty,
+      decreaseQty,
+      clearCart,
+      focusSearch,
+      handleSearchEnter,
+      clearSearch,
+      addDiscount,
+      openPayment,
+      numpadPress,
+      setPaid,
+      completeSale,
+      doLogout
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

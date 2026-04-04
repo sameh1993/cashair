@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الأصناف | نظام الكاشير</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app" class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🛒</div>
+      <div>
+        <div class="logo-text">نظام الكاشير</div>
+        <div class="logo-sub">إدارة الأصناف</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="/pos" class="nav-item"><span class="nav-icon">💰</span> الكاشير</a>
+      <a href="/products" class="nav-item active"><span class="nav-icon">📦</span> الأصناف</a>
+      <a href="/low-stock" class="nav-item"><span class="nav-icon">⚠</span> قرب النفاد</a>
+      <a href="/invoices" class="nav-item"><span class="nav-icon">🧾</span> الفواتير</a>
+      <a href="/settings" class="nav-item"><span class="nav-icon">⚙</span> الإعدادات</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div style="min-width:0;flex:1;">
+          <div style="color:#e2e8f0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="sidebar-username">...</div>
+          <div style="font-size:11px;cursor:pointer;" @click="doLogout">تسجيل خروج</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-title">إدارة الأصناف</div>
+      <input type="text" class="form-control" style="width:220px;" placeholder="بحث..." v-model="search">
+      <select class="form-control" style="width:180px;" v-model="categoryFilter">
+        <option value="">كل التصنيفات</option>
+        <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
+      </select>
+      <button class="btn btn-primary" @click="openAdd">إضافة صنف</button>
+    </div>
+
+    <div class="page-body">
+      <div class="card">
+        <div class="card-header">
+          <h5>قائمة الأصناف ({{ filteredProducts.length }})</h5>
+          <div style="display:flex;gap:8px;">
+            <select class="form-control" style="width:auto;" v-model="filterActive">
+              <option value="">الكل</option>
+              <option value="1">نشط</option>
+              <option value="0">مخفي</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>اسم الصنف</th>
+                <th>التصنيف</th>
+                <th>الباركود</th>
+                <th>السعر</th>
+                <th>المخزون</th>
+                <th>الأكثر مبيعًا</th>
+                <th>الوحدة</th>
+                <th>الحالة</th>
+                <th>إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="loading">
+                <td colspan="10" class="text-center" style="padding:40px;">
+                  <span class="spinner" style="width:24px;height:24px;border-color:#e2e8f0;border-top-color:var(--primary);"></span>
+                </td>
+              </tr>
+              <tr v-else-if="!filteredProducts.length">
+                <td colspan="10" class="text-center" style="padding:40px;color:#94a3b8;">لا توجد أصناف</td>
+              </tr>
+              <tr v-for="product in filteredProducts" :key="product.id">
+                <td class="text-muted" style="font-size:12px;">{{ product.id }}</td>
+                <td class="fw-bold">{{ product.name }}</td>
+                <td><span class="badge badge-info">{{ product.category || 'عام' }}</span></td>
+                <td style="font-size:12px;direction:ltr;text-align:right;color:#64748b;">{{ product.barcode || '-' }}</td>
+                <td class="fw-bold" style="color:var(--primary);">{{ currency }} {{ parseFloat(product.price).toFixed(2) }}</td>
+                <td>
+                  <span :class="product.stock <= 0 ? 'badge badge-danger' : product.stock <= 5 ? 'badge badge-warning' : 'badge badge-success'">
+                    {{ product.stock }}
+                  </span>
+                </td>
+                <td><span class="badge badge-gray">{{ Number(product.total_sold || 0) }}</span></td>
+                <td class="text-muted">{{ product.unit }}</td>
+                <td>
+                  <span :class="product.active ? 'badge badge-success' : 'badge badge-gray'">
+                    {{ product.active ? 'نشط' : 'مخفي' }}
+                  </span>
+                </td>
+                <td>
+                  <div style="display:flex;gap:4px;">
+                    <button class="btn btn-sm btn-outline" @click="openEdit(product)">تعديل</button>
+                    <button class="btn btn-sm btn-danger" @click="deleteProduct(product)">حذف</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" v-if="showModal" @click.self="showModal = false">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h5>{{ editMode ? 'تعديل الصنف' : 'إضافة صنف جديد' }}</h5>
+        <button class="btn-close" @click="showModal = false">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group" style="grid-column:1/-1;">
+            <label class="form-label">اسم الصنف *</label>
+            <input type="text" class="form-control" v-model="form.name" placeholder="مثال: مياه معدنية 500ml">
+          </div>
+          <div class="form-group">
+            <label class="form-label">التصنيف *</label>
+            <input list="category-list" class="form-control" v-model="form.category" placeholder="مثال: مشروبات">
+            <datalist id="category-list">
+              <option v-for="category in categories" :key="category" :value="category"></option>
+            </datalist>
+          </div>
+          <div class="form-group">
+            <label class="form-label">الوحدة</label>
+            <input type="text" class="form-control" v-model="form.unit" placeholder="قطعة / كيلو / لتر">
+          </div>
+          <div class="form-group">
+            <label class="form-label">الباركود</label>
+            <input type="text" class="form-control" v-model="form.barcode" placeholder="اختياري" style="direction:ltr;">
+          </div>
+          <div class="form-group">
+            <label class="form-label">السعر *</label>
+            <input type="number" class="form-control" v-model.number="form.price" min="0" step="0.01" style="direction:ltr;">
+          </div>
+          <div class="form-group">
+            <label class="form-label">المخزون</label>
+            <input type="number" class="form-control" v-model.number="form.stock" min="0" style="direction:ltr;">
+          </div>
+          <div class="form-group" v-if="editMode">
+            <label class="form-label">الحالة</label>
+            <select class="form-control" v-model="form.active">
+              <option :value="1">نشط</option>
+              <option :value="0">مخفي</option>
+            </select>
+          </div>
+        </div>
+        <div v-if="formError" style="background:#fee2e2;color:#b91c1c;border-radius:8px;padding:10px;margin-top:8px;font-size:13px;">
+          {{ formError }}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" @click="showModal = false">إلغاء</button>
+        <button class="btn btn-primary" @click="saveProduct" :disabled="saving">
+          <span v-if="!saving">{{ editMode ? 'حفظ التعديلات' : 'إضافة' }}</span>
+          <span v-else class="spinner" style="width:14px;height:14px;border-width:2px;"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const products = ref([]);
+    const loading = ref(true);
+    const search = ref('');
+    const categoryFilter = ref('');
+    const categories = ref([]);
+    const filterActive = ref('1');
+    const currency = ref('ج.م');
+
+    const showModal = ref(false);
+    const editMode = ref(false);
+    const saving = ref(false);
+    const formError = ref('');
+    const form = ref({ name: '', barcode: '', category: 'عام', price: 0, stock: 0, unit: 'قطعة', active: 1 });
+
+    const filteredProducts = computed(() => {
+      let list = products.value;
+      if (filterActive.value !== '') list = list.filter((product) => String(product.active) === filterActive.value);
+      if (categoryFilter.value) list = list.filter((product) => (product.category || 'عام') === categoryFilter.value);
+
+      const query = search.value.trim().toLowerCase();
+      if (!query) return list;
+
+      return list.filter((product) =>
+        product.name.toLowerCase().includes(query)
+        || (product.barcode && product.barcode.includes(query))
+        || (product.category && product.category.toLowerCase().includes(query))
+      );
+    });
+
+    function refreshCategories() {
+      categories.value = [...new Set(products.value.map((product) => product.category || 'عام'))].sort();
+      if (categoryFilter.value && !categories.value.includes(categoryFilter.value)) {
+        categoryFilter.value = '';
+      }
+    }
+
+    async function loadProducts() {
+      loading.value = true;
+      const response = await fetch('/api/products/all');
+      const data = await response.json();
+      if (data.success) {
+        products.value = data.data;
+        refreshCategories();
+      }
+      loading.value = false;
+    }
+
+    async function loadSettings() {
+      const response = await fetch('/api/settings');
+      const data = await response.json();
+      if (data.success) currency.value = data.data.currency || 'ج.م';
+    }
+
+    function openAdd() {
+      form.value = { name: '', barcode: '', category: 'عام', price: 0, stock: 0, unit: 'قطعة', active: 1 };
+      editMode.value = false;
+      formError.value = '';
+      showModal.value = true;
+    }
+
+    function openEdit(product) {
+      form.value = { ...product, category: product.category || 'عام' };
+      editMode.value = true;
+      formError.value = '';
+      showModal.value = true;
+    }
+
+    async function saveProduct() {
+      if (!form.value.name.trim()) {
+        formError.value = 'اسم الصنف مطلوب';
+        return;
+      }
+      if (!String(form.value.category || '').trim()) {
+        formError.value = 'التصنيف مطلوب';
+        return;
+      }
+      if (form.value.price < 0) {
+        formError.value = 'السعر يجب أن يكون صفر أو أكثر';
+        return;
+      }
+
+      saving.value = true;
+      formError.value = '';
+      const url = editMode.value ? `/api/products/${form.value.id}` : '/api/products';
+      const method = editMode.value ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form.value)
+      });
+      const data = await response.json();
+      saving.value = false;
+
+      if (data.success) {
+        showToast(data.message, 'success');
+        showModal.value = false;
+        await loadProducts();
+      } else {
+        formError.value = data.message || 'حدث خطأ';
+      }
+    }
+
+    async function deleteProduct(product) {
+      if (!confirm(`حذف الصنف "${product.name}"؟`)) return;
+      const response = await fetch(`/api/products/${product.id}`, { method: 'DELETE' });
+      const data = await response.json();
+      if (data.success) {
+        showToast('تم الحذف', 'success');
+        await loadProducts();
+      } else {
+        showToast(data.message, 'error');
+      }
+    }
+
+    function doLogout() {
+      if (confirm('تسجيل الخروج؟')) logout();
+    }
+
+    onMounted(() => {
+      loadProducts();
+      loadSettings();
+    });
+
+    return {
+      products,
+      loading,
+      search,
+      categoryFilter,
+      categories,
+      filterActive,
+      currency,
+      filteredProducts,
+      showModal,
+      editMode,
+      saving,
+      formError,
+      form,
+      openAdd,
+      openEdit,
+      saveProduct,
+      deleteProduct,
+      doLogout
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

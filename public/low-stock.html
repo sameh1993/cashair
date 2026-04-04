@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قرب النفاد | نظام الكاشير</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app" class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🛒</div>
+      <div><div class="logo-text">نظام الكاشير</div><div class="logo-sub">الأصناف قرب النفاد</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="/pos" class="nav-item"><span class="nav-icon">💰</span> الكاشير</a>
+      <a href="/products" class="nav-item"><span class="nav-icon">📦</span> المنتجات</a>
+      <a href="/low-stock" class="nav-item active"><span class="nav-icon">🚨</span> قرب النفاد</a>
+      <a href="/invoices" class="nav-item"><span class="nav-icon">🧾</span> الفواتير</a>
+      <a href="/settings" class="nav-item"><span class="nav-icon">⚙️</span> الإعدادات</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div style="min-width:0;flex:1;">
+          <div style="color:#e2e8f0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="sidebar-username">...</div>
+          <div style="font-size:11px;cursor:pointer;" @click="doLogout">تسجيل خروج</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="topbar">
+      <div class="topbar-title">🚨 الأصناف قرب النفاد</div>
+      <input type="text" class="form-control" style="width:240px;" placeholder="🔍 بحث باسم الصنف أو الباركود" v-model="search">
+      <button class="btn btn-outline" @click="loadLowStock">تحديث</button>
+    </div>
+
+    <div class="page-body">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:18px;">
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--danger);">{{ outCount }}</div>
+          <div class="stat-label">أصناف نفدت</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--warning);">{{ lowCount }}</div>
+          <div class="stat-label">قرب النفاد</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--primary);">{{ alertLimit }}</div>
+          <div class="stat-label">حد التنبيه الحالي</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h5>قائمة النواقص ({{ filteredProducts.length }})</h5>
+          <div class="text-muted" style="font-size:12px;">
+            تظهر الأصناف التي رصيدها أقل من أو يساوي حد التنبيه
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>اسم الصنف</th>
+                <th>الباركود</th>
+                <th>الرصيد الحالي</th>
+                <th>الوحدة</th>
+                <th>السعر</th>
+                <th>الحالة</th>
+                <th>إجراء</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="loading">
+                <td colspan="8" class="text-center" style="padding:40px;">
+                  <span class="spinner" style="width:24px;height:24px;border-color:#e2e8f0;border-top-color:var(--primary);"></span>
+                </td>
+              </tr>
+              <tr v-else-if="!filteredProducts.length">
+                <td colspan="8" class="text-center" style="padding:40px;color:#94a3b8;">
+                  لا توجد أصناف قرب النفاد الآن
+                </td>
+              </tr>
+              <tr v-for="p in filteredProducts" :key="p.id">
+                <td class="text-muted" style="font-size:12px;">{{ p.id }}</td>
+                <td class="fw-bold">{{ p.name }}</td>
+                <td style="font-size:12px;direction:ltr;text-align:right;color:#64748b;">{{ p.barcode || '-' }}</td>
+                <td>
+                  <span :class="p.stock <= 0 ? 'badge badge-danger' : 'badge badge-warning'">
+                    {{ p.stock }}
+                  </span>
+                </td>
+                <td class="text-muted">{{ p.unit || 'قطعة' }}</td>
+                <td class="fw-bold" style="color:var(--primary);">{{ formatMoney(p.price) }}</td>
+                <td>
+                  <span :class="p.stock <= 0 ? 'badge badge-danger' : 'badge badge-warning'">
+                    {{ p.stock <= 0 ? 'نفد' : 'قرب النفاد' }}
+                  </span>
+                </td>
+                <td>
+                  <a class="btn btn-sm btn-outline" href="/products">تعديل الصنف</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const lowStockProducts = ref([]);
+    const loading = ref(true);
+    const search = ref('');
+    const currency = ref('ج.م');
+    const curPos = ref('after');
+    const alertLimit = ref(5);
+
+    const filteredProducts = computed(() => {
+      const q = search.value.trim().toLowerCase();
+      if (!q) return lowStockProducts.value;
+      return lowStockProducts.value.filter(p =>
+        p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q))
+      );
+    });
+
+    const outCount = computed(() => lowStockProducts.value.filter(p => Number(p.stock) <= 0).length);
+    const lowCount = computed(() => lowStockProducts.value.filter(p => Number(p.stock) > 0).length);
+
+    function formatMoney(v) {
+      const val = parseFloat(v || 0).toFixed(2);
+      return curPos.value === 'before' ? `${currency.value} ${val}` : `${val} ${currency.value}`;
+    }
+
+    async function loadLowStock() {
+      loading.value = true;
+      try {
+        const [settingsRes, productsRes] = await Promise.all([
+          fetch('/api/settings'),
+          fetch('/api/products/low-stock')
+        ]);
+        const settingsData = await settingsRes.json();
+        const productsData = await productsRes.json();
+
+        if (settingsData.success) {
+          currency.value = settingsData.data.currency || 'ج.م';
+          curPos.value = settingsData.data.currency_position || 'after';
+        }
+
+        if (productsData.success) {
+          lowStockProducts.value = productsData.data;
+          alertLimit.value = productsData.meta?.low_stock_alert || 5;
+        } else {
+          showToast(productsData.message || 'تعذر تحميل البيانات', 'error');
+        }
+      } catch {
+        showToast('خطأ في الاتصال بالخادم', 'error');
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    function doLogout() {
+      if (confirm('تسجيل الخروج؟')) logout();
+    }
+
+    onMounted(loadLowStock);
+
+    return {
+      lowStockProducts, loading, search, alertLimit,
+      filteredProducts, outCount, lowCount,
+      formatMoney, loadLowStock, doLogout,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
