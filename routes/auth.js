@@ -19,7 +19,13 @@ router.post('/login', async (req, res) => {
     if (!valid)
       return res.json({ success: false, message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
 
-    req.session.user = { id: user.id, username: user.username, full_name: user.full_name, role: user.role };
+    req.session.user = {
+      id: user.id,
+      username: user.username,
+      full_name: user.full_name,
+      role: user.role,
+      user_code: user.id
+    };
     res.json({ success: true, user: req.session.user });
   } catch (e) {
     console.error(e);
