@@ -362,6 +362,7 @@ router.put('/:id', requireAuth, async (req, res) => {
 
     const oldQuantities = summarizeQuantities(oldItems);
     const newQuantities = summarizeQuantities(payload.data.items);
+    const oldProductIds = new Set([...oldQuantities.keys()]);
     const affectedProductIds = [...new Set([...oldQuantities.keys(), ...newQuantities.keys()])];
     const lockedProducts = await lockProducts(conn, affectedProductIds);
 
@@ -379,7 +380,11 @@ router.put('/:id', requireAuth, async (req, res) => {
       if (!item.product_id) continue;
 
       const product = lockedProducts.get(item.product_id);
-      if (!product || !product.active) {
+      if (!product) {
+        throw new Error(`PRODUCT_NOT_FOUND:${item.product_name}`);
+      }
+
+      if (!product.active && !oldProductIds.has(item.product_id)) {
         throw new Error(`PRODUCT_NOT_FOUND:${item.product_name}`);
       }
     }
